@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Randomian</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="setup">
+  <div id="setupCard">
+    <div class="setup-header">
+      <div class="setup-logo"></div>
+      <h1>Randomian</h1>
+      <p class="setup-subtitle">Ordner wählen, mischen lassen, Vollbild genießen.</p>
+    </div>
+
+    <div class="setup-step">
+      <div class="setup-step-num">1</div>
+      <div class="setup-step-body">
+        <div class="setup-step-title">Videos</div>
+        <div id="status" class="status-text">Ordner mit Videos auswählen, um zu starten.</div>
+      </div>
+      <button id="pickBtn" class="setup-btn">Ordner wählen</button>
+    </div>
+
+    <div class="setup-step">
+      <div class="setup-step-num">2</div>
+      <div class="setup-step-body">
+        <div class="setup-step-title">Spots <span class="optional-tag">optional</span></div>
+        <div id="spotStatus" class="status-text">Laufen alle 3–6 Videos dazwischen, ohne Bauchbinde.</div>
+      </div>
+      <button id="pickSpotsBtn" class="setup-btn setup-btn-secondary">Ordner wählen</button>
+    </div>
+
+    <div class="setup-step">
+      <div class="setup-step-num">3</div>
+      <div class="setup-step-body">
+        <div class="setup-step-title">Logging <span class="optional-tag">optional</span></div>
+        <div id="logStatus" class="status-text">Ohne Bestätigung wird nicht geloggt.</div>
+      </div>
+      <button id="pickLogFileBtn" class="setup-btn setup-btn-secondary">history.log wählen</button>
+    </div>
+
+    <button id="startBtn" class="setup-start-btn" disabled>▶ Vollbild &amp; Start</button>
+  </div>
+</div>
+
+<div id="player">
+  <video id="video" autoplay></video>
+  <div id="hud">
+    <span id="fileName"></span>
+    <span id="counter"></span>
+  </div>
+  <div id="progressContainer">
+    <span id="timeCurrent">0:00</span>
+    <input type="range" id="progressBar" min="0" max="100" value="0" step="0.1">
+    <span id="timeDuration">0:00</span>
+  </div>
+  <div id="controls">
+    <button id="prevBtn">⏮ Zurück</button>
+    <button id="pauseBtn">⏸ Pause</button>
+    <button id="nextBtn">⏭ Weiter</button>
+    <button id="reshuffleBtn">🔀 Neu mischen</button>
+    <button id="exitBtn">✕ Beenden</button>
+  </div>
+  <div id="titlePopup">
+    <div id="titlePopupBar">
+      <div id="titlePopupAccent"></div>
+      <div id="titlePopupContent">
+        <div id="titlePopupEyebrow">Jetzt läuft</div>
+        <div id="titlePopupTitle"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="script.js"></script>
+</body>
+</html>
