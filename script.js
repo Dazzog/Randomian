@@ -75,6 +75,13 @@ function stripExtension(name) {
   return name.replace(/\.[^./\\]+$/, '');
 }
 
+function formatTitleForDisplay(name) {
+  const title = stripExtension(name);
+  // Unterstriche nur durch Leerzeichen ersetzen, wenn der Titel noch keine echten Leerzeichen hat
+  // (sonst würden z. B. "mein_video 2" und "mein video_2" ununterscheidbar werden).
+  return title.includes(' ') ? title : title.replace(/_/g, ' ');
+}
+
 let logFileHandle = null;
 
 async function pickLogFile() {
@@ -324,7 +331,7 @@ function playIndex(index) {
   timeDurationEl.textContent = '0:00';
   hideTitlePopup(); // eine noch sichtbare Bauchbinde des vorigen Videos sofort ausblenden
   titlePopupShowTimeout = setTimeout(() => {
-    showTitlePopup(stripExtension(file.name), 'Jetzt läuft', START_POPUP_VISIBLE_TIME);
+    showTitlePopup(formatTitleForDisplay(file.name), 'Jetzt läuft', START_POPUP_VISIBLE_TIME);
   }, START_POPUP_DELAY);
   videoEl.onended = playNext;
 }
@@ -346,7 +353,7 @@ videoEl.addEventListener('timeupdate', () => {
   if (isSpotPlaying || endingPopupShown || !isFinite(duration) || duration <= END_POPUP_LEAD_TIME * 2) return;
   if (duration - currentTime <= END_POPUP_LEAD_TIME) {
     endingPopupShown = true;
-    showTitlePopup(stripExtension(playlist[currentIndex].name), 'Das war', END_POPUP_VISIBLE_TIME);
+    showTitlePopup(formatTitleForDisplay(playlist[currentIndex].name), 'Das war', END_POPUP_VISIBLE_TIME);
   }
 });
 
