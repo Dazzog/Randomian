@@ -243,21 +243,19 @@ function isVideoFile(name) {
 }
 
 async function collectVideoFiles(dirHandle) {
-  const files = [];
+  // getFile() und Unterordner laufen parallel statt Datei für Datei nacheinander.
   async function walk(handle) {
+    const pending = [];
     for await (const [name, entry] of handle.entries()) {
       if (entry.kind === 'file') {
-        if (isVideoFile(name)) {
-          const file = await entry.getFile();
-          files.push(file);
-        }
+        if (isVideoFile(name)) pending.push(entry.getFile());
       } else if (entry.kind === 'directory') {
-        await walk(entry);
+        pending.push(walk(entry));
       }
     }
+    return (await Promise.all(pending)).flat();
   }
-  await walk(dirHandle);
-  return files;
+  return walk(dirHandle);
 }
 
 // Fallback for browsers without File System Access API: <input webkitdirectory>
@@ -375,7 +373,7 @@ function playIndex(index) {
   titlePopupShowTimeout = setTimeout(() => {
     showTitlePopup(formatTitleForDisplay(file.name), 'Jetzt läuft', START_POPUP_VISIBLE_TIME);
   }, START_POPUP_DELAY);
-  topProgressBarFill.style.width = '0%';
+  topProgressBarFill.style.transform = 'scaleX(0)';
   videoEl.onended = () => playNext();
   safePlay();
 }
@@ -386,13 +384,15 @@ videoEl.addEventListener('timeupdate', () => {
   const { duration, currentTime } = videoEl;
 
   if (!isSpotPlaying && isFinite(duration) && duration > 0) {
-    topProgressBarFill.style.width = `${(currentTime / duration) * 100}%`;
+    topProgressBarFill.style.transform = `scaleX(${currentTime / duration})`;
   }
 
   if (!isSeeking && isFinite(duration) && duration > 0) {
     progressBar.value = (currentTime / duration) * 100;
     progressBar.style.setProperty('--progress', `${(currentTime / duration) * 100}%`);
-    timeCurrentEl.textContent = formatTime(currentTime);
+    // Text ändert sich nur einmal pro Sekunde, nicht bei jedem timeupdate.
+    const label = formatTime(currentTime);
+    if (timeCurrentEl.textContent !== label) timeCurrentEl.textContent = label;
   }
 
   if (isSpotPlaying || endingPopupShown || !isFinite(duration) || duration <= END_POPUP_LEAD_TIME * 2) return;

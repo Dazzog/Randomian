@@ -259,7 +259,9 @@ button {
 
 #topProgressBarFill {
   height: 100%;
-  width: 0%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left;
   background: linear-gradient(90deg, var(--color-primary), var(--color-primary-light));
 }
 
