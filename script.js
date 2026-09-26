@@ -48,6 +48,21 @@ let titlePopupShowTimeout = null;
 let titlePopupHideTimeout = null;
 let titlePopupWidthResetTimeout = null;
 let controlsHideTimeout = null;
+let consecutiveErrors = 0;
+
+function safePlay() {
+  videoEl.play().catch((err) => {
+    // AbortError: Quelle wurde durch schnelles Weiterschalten ersetzt.
+    // NotSupportedError: wird zusätzlich über das error-Event behandelt.
+    if (err.name !== 'AbortError' && err.name !== 'NotSupportedError') {
+      console.warn('Wiedergabe konnte nicht gestartet werden:', err);
+    }
+  });
+}
+
+function updatePauseButton() {
+  pauseBtn.textContent = videoEl.paused ? '▶ Weiter' : '⏸ Pause';
+}
 
 function scheduleControlsHide() {
   clearTimeout(controlsHideTimeout);
@@ -105,16 +120,22 @@ async function pickLogFile() {
   }
 }
 
-async function appendToLogFile(line) {
+// Schreibzugriffe laufen nacheinander: createWritable() sperrt die Datei, parallele Aufrufe würden Zeilen verlieren.
+let logQueue = Promise.resolve();
+
+function appendToLogFile(line) {
   if (!logFileHandle) return;
-  try {
-    const file = await logFileHandle.getFile();
-    const writable = await logFileHandle.createWritable({ keepExistingData: true });
-    await writable.write({ type: 'write', position: file.size, data: line });
-    await writable.close();
-  } catch (err) {
-    console.warn('Konnte Log-Zeile nicht in die Datei schreiben:', err);
-  }
+  const handle = logFileHandle;
+  logQueue = logQueue.then(async () => {
+    try {
+      const file = await handle.getFile();
+      const writable = await handle.createWritable({ keepExistingData: true });
+      await writable.write({ type: 'write', position: file.size, data: line });
+      await writable.close();
+    } catch (err) {
+      console.warn('Konnte Log-Zeile nicht in die Datei schreiben:', err);
+    }
+  });
 }
 
 function logPlaybackStart(file, type) {
@@ -253,6 +274,8 @@ async function chooseVideoFiles() {
 }
 
 async function pickDirectory() {
+  const previousText = statusEl.textContent;
+  const previousSuccess = statusEl.classList.contains('success');
   statusEl.classList.remove('success');
   statusEl.textContent = 'Ordner wird gelesen…';
   pickBtn.disabled = true;
@@ -270,7 +293,11 @@ async function pickDirectory() {
     statusEl.classList.add('success');
     startBtn.disabled = false;
   } catch (err) {
-    if (err.name !== 'AbortError') {
+    if (err.name === 'AbortError') {
+      // Abbruch im Dialog: vorherigen Status wiederherstellen.
+      statusEl.textContent = previousText;
+      statusEl.classList.toggle('success', previousSuccess);
+    } else {
       statusEl.textContent = 'Fehler beim Lesen des Ordners: ' + err.message;
     }
   } finally {
@@ -279,6 +306,8 @@ async function pickDirectory() {
 }
 
 async function pickSpotsDirectory() {
+  const previousText = spotStatusEl.textContent;
+  const previousSuccess = spotStatusEl.classList.contains('success');
   spotStatusEl.classList.remove('success');
   spotStatusEl.textContent = 'Spots-Ordner wird gelesen…';
   pickSpotsBtn.disabled = true;
@@ -293,7 +322,10 @@ async function pickSpotsDirectory() {
       spotStatusEl.textContent = 'Keine Videodateien im gewählten Ordner gefunden.';
     }
   } catch (err) {
-    if (err.name !== 'AbortError') {
+    if (err.name === 'AbortError') {
+      spotStatusEl.textContent = previousText;
+      spotStatusEl.classList.toggle('success', previousSuccess);
+    } else {
       spotStatusEl.textContent = 'Fehler beim Lesen des Spots-Ordners: ' + err.message;
     }
   } finally {
@@ -302,12 +334,14 @@ async function pickSpotsDirectory() {
 }
 
 function pickWithInputFallback() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.webkitdirectory = true;
     input.multiple = true;
     input.onchange = () => resolve(collectFromFileList(input.files));
+    // Ohne cancel-Handler bliebe das Promise bei Abbruch ewig offen und der Button gesperrt.
+    input.oncancel = () => reject(new DOMException('Auswahl abgebrochen', 'AbortError'));
     input.click();
   });
 }
@@ -341,8 +375,9 @@ function playIndex(index) {
   titlePopupShowTimeout = setTimeout(() => {
     showTitlePopup(formatTitleForDisplay(file.name), 'Jetzt läuft', START_POPUP_VISIBLE_TIME);
   }, START_POPUP_DELAY);
-  videoEl.onended = playNext;
-  videoEl.play();
+  topProgressBarFill.style.width = '0%';
+  videoEl.onended = () => playNext();
+  safePlay();
 }
 
 videoEl.addEventListener('timeupdate', () => {
@@ -387,7 +422,39 @@ progressBar.addEventListener('change', () => {
   isSeeking = false;
 });
 
+// Nach Mausbedienung den Fokus abgeben, damit ←/→ wieder Zurück/Weiter auslösen.
+// (Per Tastatur bedientes Slider-Fokus bleibt bewusst erhalten.)
+progressBar.addEventListener('pointerup', () => {
+  setTimeout(() => progressBar.blur(), 0);
+});
+
+videoEl.addEventListener('play', updatePauseButton);
+videoEl.addEventListener('pause', updatePauseButton);
+videoEl.addEventListener('playing', () => { consecutiveErrors = 0; });
+
+videoEl.addEventListener('error', () => {
+  // Nach stopPlayback() ist kein src mehr gesetzt – dann gibt es nichts zu behandeln.
+  if (!playerEl.classList.contains('active') || !videoEl.getAttribute('src')) return;
+
+  console.warn('Datei konnte nicht abgespielt werden:', fileNameEl.textContent, videoEl.error);
+  consecutiveErrors++;
+
+  if (!isSpotPlaying && consecutiveErrors >= playlist.length) {
+    stopPlayback();
+    statusEl.classList.remove('success');
+    statusEl.textContent = 'Keines der Videos konnte abgespielt werden (Format vom Browser nicht unterstützt?).';
+    return;
+  }
+
+  // Defekte Datei überspringen; ein Spot wird dabei nicht auf den Spot-Zähler angerechnet.
+  isSpotPlaying = false;
+  playNext({ afterSpot: true });
+});
+
 function playNext({ afterSpot = false } = {}) {
+  // Weiter während eines Spots (oder nach Fehler) zählt nicht als abgespieltes Video.
+  if (isSpotPlaying) afterSpot = true;
+
   if (!afterSpot && spotPlaylist.length) {
     videosSinceSpot++;
     if (videosSinceSpot >= spotThreshold) {
@@ -422,7 +489,7 @@ function playSpot() {
   if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
   currentObjectUrl = URL.createObjectURL(file);
   videoEl.src = currentObjectUrl;
-  videoEl.play();
+  safePlay();
   logPlaybackStart(file, 'spot');
   fileNameEl.textContent = file.name;
   isSeeking = false;
@@ -483,18 +550,16 @@ pickLogFileBtn.addEventListener('click', pickLogFile);
 startBtn.addEventListener('click', startPlayback);
 
 prevBtn.addEventListener('click', playPrev);
-nextBtn.addEventListener('click', playNext);
+nextBtn.addEventListener('click', () => playNext());
 reshuffleBtn.addEventListener('click', () => {
   playlist = shuffle(playlist);
   playIndex(0);
 });
 pauseBtn.addEventListener('click', () => {
   if (videoEl.paused) {
-    videoEl.play();
-    pauseBtn.textContent = '⏸ Pause';
+    safePlay();
   } else {
     videoEl.pause();
-    pauseBtn.textContent = '▶ Weiter';
   }
 });
 exitBtn.addEventListener('click', stopPlayback);
