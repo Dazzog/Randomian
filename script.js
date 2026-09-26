@@ -23,6 +23,7 @@ const titlePopupBarEl = document.getElementById('titlePopupBar');
 const titlePopupEyebrowEl = document.getElementById('titlePopupEyebrow');
 const titlePopupTitleEl = document.getElementById('titlePopupTitle');
 const progressBar = document.getElementById('progressBar');
+const topProgressBarEl = document.getElementById('topProgressBar');
 const topProgressBarFill = document.getElementById('topProgressBarFill');
 const timeCurrentEl = document.getElementById('timeCurrent');
 const timeDurationEl = document.getElementById('timeDuration');
@@ -311,14 +312,22 @@ function pickWithInputFallback() {
   });
 }
 
+function updateTopProgressBar() {
+  const visible = !isSpotPlaying;
+  topProgressBarEl.style.display = visible ? '' : 'none';
+}
+
 function playIndex(index) {
   if (index < 0 || index >= playlist.length) return;
+
   currentIndex = index;
+  isSpotPlaying = false;
+  updateTopProgressBar();
+
   const file = playlist[currentIndex];
   if (currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
   currentObjectUrl = URL.createObjectURL(file);
   videoEl.src = currentObjectUrl;
-  videoEl.play();
   logPlaybackStart(file, 'video');
   fileNameEl.textContent = file.name;
   counterEl.textContent = `${currentIndex + 1} / ${playlist.length}`;
@@ -326,7 +335,6 @@ function playIndex(index) {
   isSeeking = false;
   progressBar.value = 0;
   progressBar.style.setProperty('--progress', '0%');
-  topProgressBarFill.style.width = '0%';
   timeCurrentEl.textContent = '0:00';
   timeDurationEl.textContent = '0:00';
   hideTitlePopup(); // eine noch sichtbare Bauchbinde des vorigen Videos sofort ausblenden
@@ -334,13 +342,15 @@ function playIndex(index) {
     showTitlePopup(formatTitleForDisplay(file.name), 'Jetzt läuft', START_POPUP_VISIBLE_TIME);
   }, START_POPUP_DELAY);
   videoEl.onended = playNext;
+  videoEl.play();
 }
 
 videoEl.addEventListener('timeupdate', () => {
   if (currentIndex < 0) return;
+
   const { duration, currentTime } = videoEl;
 
-  if (isFinite(duration) && duration > 0) {
+  if (!isSpotPlaying && isFinite(duration) && duration > 0) {
     topProgressBarFill.style.width = `${(currentTime / duration) * 100}%`;
   }
 
@@ -404,6 +414,8 @@ function playSpot() {
   }
 
   isSpotPlaying = true;
+  updateTopProgressBar();
+
   clearTimeout(titlePopupShowTimeout);
   hideTitlePopup();
 
@@ -416,7 +428,6 @@ function playSpot() {
   isSeeking = false;
   progressBar.value = 0;
   progressBar.style.setProperty('--progress', '0%');
-  topProgressBarFill.style.width = '0%';
   timeCurrentEl.textContent = '0:00';
   timeDurationEl.textContent = '0:00';
 
@@ -449,6 +460,7 @@ function stopPlayback() {
   videoEl.removeAttribute('src');
   videoEl.load();
   isSpotPlaying = false;
+  updateTopProgressBar();
   if (currentObjectUrl) {
     URL.revokeObjectURL(currentObjectUrl);
     currentObjectUrl = null;

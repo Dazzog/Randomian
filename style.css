@@ -89,8 +89,8 @@ button {
 }
 
 .setup-logo {
-  width: 256px;
-  height: 256px;
+  width: auto;
+  height: 192px;
   margin: 0 auto;
   background-image: var(--img-logo);
   background-size: contain;
